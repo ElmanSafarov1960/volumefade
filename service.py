@@ -1,127 +1,138 @@
+#service.py
+#(v 0.1.25) 
 import os
 import time
 from jnius import autoclass
 
-# 1. Настройки Android компонентов
-PythonService = autoclass('org.kivy.android.PythonService')
-service_instance = PythonService.mService
-Context = autoclass('android.content.Context')
-NotificationManager = autoclass('android.app.NotificationManager')
-NotificationChannel = autoclass('android.app.NotificationChannel')
-NotificationBuilder = autoclass('android.app.Notification$Builder')
-KeyEvent = autoclass('android.view.KeyEvent')
+# Невелика пауза для стабілізації ініціалізації
+time.sleep(0.5) 
 
-# Пути к файлам
-app_dir = service_instance.getFilesDir().getAbsolutePath()
-pause_flag = os.path.join(app_dir, 'pause.txt')
-vol_file = os.path.join(app_dir, 'original_vol.txt')
-
-# 2. Канал уведомлений
-channel_id = "fade_service_channel"
-channel = NotificationChannel(channel_id, "Volume Fade Service", 2)
-notification_manager = service_instance.getSystemService(Context.NOTIFICATION_SERVICE)
-notification_manager.createNotificationChannel(channel)
-
-notification_builder = NotificationBuilder(service_instance, channel_id)
-notification_builder.setContentTitle("Volume Fade")
-notification_builder.setSmallIcon(service_instance.getApplicationInfo().icon)
-service_instance.startForeground(1, notification_builder.build())
-
-# 3. Настройка звука
-audio_manager = service_instance.getSystemService(Context.AUDIO_SERVICE)
-STREAM_MUSIC = 3 
-
-# Сохраняем начальную громкость
-start_volume = audio_manager.getStreamVolume(STREAM_MUSIC)
-with open(vol_file, 'w') as f:
-    f.write(str(start_volume))
-
-# --- ОБРАБОТКА НОВЫХ АРГУМЕНТОВ ---
-arg = os.getenv('PYTHON_SERVICE_ARGUMENT')
-delay_minutes = 0
-fade_minutes = 1
-
-if arg:
-    try:
-        # Разделяем полученную строку "delay|fade"
-        if "|" in arg:
-            d_str, f_str = arg.split("|")
-            delay_minutes = int(d_str)
-            fade_minutes = int(f_str)
-        else:
-            fade_minutes = int(arg)
-    except:
-        pass
-
-# 4. ЛОГИКА ЗАДЕРЖКИ (DELAYED TIME)
-if delay_minutes > 0:
-    remaining_delay = delay_minutes * 60
-    while remaining_delay > 0:
-        # Проверка на паузу во время ожидания
-        if os.path.exists(pause_flag):
-            notification_builder.setContentText("Waiting delayed start (Paused)")
-            notification_manager.notify(1, notification_builder.build())
-            time.sleep(2)
-            continue
-            
-        notification_builder.setContentText(f"Fade starts in {int(remaining_delay/60) + 1} min")
-        notification_manager.notify(1, notification_builder.build())
-        
-        time.sleep(10) # Проверяем каждые 10 секунд
-        remaining_delay -= 10
-
-
-# 5. ОСНОВНАЯ ЛОГИКА ЗАТУХАНИЯ (FADE-OUT)
-manual_stop = False
-
-if start_volume > 0:
-    pause_between_steps = (fade_minutes * 60) / start_volume
-    current_vol = start_volume
+try:
+    PythonService = autoclass('org.kivy.android.PythonService')
+    service_instance = PythonService.mService
+    Context = autoclass('android.content.Context')
+    NotificationChannel = autoclass('android.app.NotificationChannel')
+    NotificationBuilder = autoclass('android.app.Notification$Builder')
     
-    while current_vol > 0:
+    channel_id = "fade_silent_channel_v5"
+    notif_manager = service_instance.getSystemService(Context.NOTIFICATION_SERVICE)
+    
+    # 1. Створення каналу сповіщень (без звуку)
+    channel = NotificationChannel(channel_id, "Volume Fade Service", 3)
+    channel.setSound(None, None)
+    notif_manager.createNotificationChannel(channel)
 
+    notification_builder = NotificationBuilder(service_instance, channel_id)
+    notification_builder.setContentTitle("Volume Fading")
+    notification_builder.setContentText("Музика поступово затухає...")
+
+    # --- БЛОК ВСТАНОВЛЕННЯ ІКОНКИ ---
+    try:
+        package_name = service_instance.getPackageName()
+        res = service_instance.getResources()
         
-        if os.path.exists(pause_flag):
-            notification_builder.setContentText("Fading paused")
-            notification_manager.notify(1, notification_builder.build())
-            continue
+        # Шукаємо спеціальну іконку status_icon, якщо немає - іконку додатка
+        res_id = res.getIdentifier("status_icon", "drawable", package_name)
+        if res_id == 0:
+            res_id = service_instance.getApplicationInfo().icon
+        if res_id == 0:
+            res_id = 0x1080093 # Системна іконка як останній варіант
+            
+        notification_builder.setSmallIcon(res_id)
+    except Exception as icon_e:
+        notification_builder.setSmallIcon(0x1080093)
+    # -------------------------------
 
-        notification_builder.setContentText(f"Volume: {current_vol} (Fading active)")
-        notification_manager.notify(1, notification_builder.build())
+    notification = notification_builder.build()
+    # Запуск у фоновому режимі (Media Playback тип для API 34+)
+    service_instance.startForeground(1, notification)
 
-        time.sleep(pause_between_steps)
+except Exception as e:
+    print(f"PYTHON ERROR (Startup): {e}")
 
-        real_vol = audio_manager.getStreamVolume(STREAM_MUSIC)
-        if real_vol != current_vol:
-            notification_builder.setContentText("Manual volume change detected. Fade stopped.")
-            notification_manager.notify(1, notification_builder.build())
-            manual_stop = True
-            break
+# --- ЛОГІКА ЗАТУХАННЯ ---
+try:
+    KeyEvent = autoclass('android.view.KeyEvent')
+    PowerManager = autoclass('android.os.PowerManager')
+    AudioManager = autoclass('android.media.AudioManager')
+    
+    app_dir = service_instance.getFilesDir().getAbsolutePath()
+    pause_flag = os.path.join(app_dir, 'pause.txt')
+    vol_file = os.path.join(app_dir, 'original_vol.txt')
+    done_flag = os.path.join(app_dir, 'fade_done.txt')
 
-        if os.path.exists(pause_flag):
-            continue
+    power_manager = service_instance.getSystemService(Context.POWER_SERVICE)
+    wake_lock = power_manager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "VolumeFade:Lock")
 
-        current_vol -= 1
-        audio_manager.setStreamVolume(STREAM_MUSIC, current_vol, 0)
+    if not wake_lock.isHeld():
+        wake_lock.acquire()
+
+    audio_manager = service_instance.getSystemService(Context.AUDIO_SERVICE)
+    STREAM_MUSIC = 3 
+    
+    arg = os.getenv('PYTHON_SERVICE_ARGUMENT')
+    delay_min, fade_min = 0, 10
+    if arg and "|" in arg:
+        d, f = arg.split("|")
+        delay_min, fade_min = int(d), int(f)
+
+    start_vol = audio_manager.getStreamVolume(STREAM_MUSIC)
+    last_vol = start_vol
+    
+    # Зберігаємо початкову гучність для кнопки Restore
+    with open(vol_file, 'w') as f: 
+        f.write(str(start_vol))
+
+    # --- Очікування (Delay) ---
+    if delay_min > 0:
+        rem_sec = delay_min * 60
+        while rem_sec > 0:
+            # Якщо користувач вручну сильно змінив звук — зупиняємося
+            if abs(audio_manager.getStreamVolume(STREAM_MUSIC) - last_vol) > 1: 
+                break
+            while os.path.exists(pause_flag):
+                time.sleep(1)
+            time.sleep(1)
+            rem_sec -= 1
+
+    # --- Експоненціальне затухання ---
+    if start_vol > 0:
+        total_fade_seconds = fade_min * 60
+        sum_of_levels = sum(range(1, start_vol + 1))
+        unit_time = total_fade_seconds / sum_of_levels
+
+        for i in range(start_vol, -1, -1):
+            if abs(audio_manager.getStreamVolume(STREAM_MUSIC) - last_vol) > 1: 
+                break
+            while os.path.exists(pause_flag):
+                time.sleep(1)
+            
+            audio_manager.setStreamVolume(STREAM_MUSIC, i, 0)
+            last_vol = i
+            if i > 0:
+                time.sleep(i * unit_time)
+
+    # Ставимо плеєр на паузу після завершення
+    if abs(audio_manager.getStreamVolume(STREAM_MUSIC) - last_vol) <= 1:
+        audio_manager.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PAUSE))
+        audio_manager.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PAUSE))
+
+except Exception as e:
+    print(f"PYTHON ERROR (Main Loop): {e}")
+
+finally:
+    # Очищення ресурсів
+    if 'wake_lock' in locals() and wake_lock.isHeld(): 
+        wake_lock.release()
+    if os.path.exists(pause_flag): 
+        os.remove(pause_flag)
+    
+    # Створюємо мітку завершення для main.py
+    with open(done_flag, 'w') as f: 
+        f.write('1')
+        
+    time.sleep(1) 
+    service_instance.stopForeground(True)
+    service_instance.stopSelf()
 
 
-
-# 6. ЗАВЕРШЕНИЕ
-
-if not manual_stop:
-    audio_manager.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PAUSE))
-    audio_manager.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PAUSE))
-
-if os.path.exists(pause_flag):
-    os.remove(pause_flag)
-
-done_flag = os.path.join(app_dir, 'fade_done.txt')
-
-if os.path.exists(done_flag):
-    os.remove(done_flag)
-
-with open(done_flag, 'w') as f:
-    f.write('1')
-
-service_instance.stopForeground(True)
-service_instance.stopSelf()
