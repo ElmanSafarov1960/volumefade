@@ -8,43 +8,53 @@ If you like to fall asleep while listening to YouTube, radio, or music, but don�
 
 ## Features
 
-- Set a delay before volume fading starts
-- Smooth volume fade-out to silence over a selected time
-- Pause and resume fade-out
-- Restore the original volume with one button
-- Minimalist night-friendly interface
-- User actions always have priority (manual volume change stops the fade)
+- **Delay Start**: Set a delay (0-60 min) before the volume begins to fade.
+- **Smooth Fade-out**: Gradually decrease volume to silence over 10-120 minutes.
+- **Real-time Monitoring**: Visual slider to track current media volume.
+- **Flexible Control**: Pause and resume the fade-out process at any time.
+- **Quick Restore**: One-tap button to return to the original volume level.
+- **Smart Safety**: Manual volume changes by the user automatically stop the fade process.
+- **Fix Background Errors**: Built-in tool to help configure Android battery settings for stable background work.
 
 ---
 
 ## How It Works
 
-1. Start music, video, or audiobook
-2. Set the delay before fading begins
-3. Set the fade-out duration
-4. Press **Start Fade**
-5. The volume will gradually decrease to silence
+1. **Start** your favorite media (YouTube, music, audiobook).
+2. **Set the delay** (how long to play at full volume).
+3. **Set the fade duration** (how slowly the sound should disappear).
+4. **Press START FADE**.
+5. Watch the **Current Media Volume** slider gradually move to zero.
 
-If you manually change the volume during fade-out, the process stops automatically — user control always comes first.
+If you need to stop everything and close the app, use the **STOP & EXIT** button.
+---
 
+## 🛠 Fixing Background Issues (Android)
+
+Android systems often close background apps to save battery. If the volume stops fading when the screen is off, follow these steps after pressing **"FIX BACKGROUND ERRORS"**:
+
+1. Find **Volume Fade** in the app list that opens.
+2. Select **"Don't optimize"** or **"No restrictions"** for battery usage.
+3. Ensure **"Background activity"** is allowed.
+
+This ensures the fade-out service continues to work smoothly while you sleep
 ---
 
 ## Platforms
 
-- **Android** (background service, designed for sleep use)
+- **Android** (optimized with background service for reliable sleep use)
 - **Windows** (desktop version)
 
 ---
 
-## Privacy
+## Privacy & Safety
 
-Volume Fade:
-- does **not** collect personal data
-- does **not** include ads
-- works fully offline
+- **No Data Collection**: Works fully offline, no personal data is accessed.
+- **No Ads**: Pure utility without distractions.
+- **Battery Friendly**: Includes a "Fix Background Errors" button to help you grant necessary permissions for the service to run while the screen is off.
 
 Privacy Policy:  
-https://elmansafarov1960.github.io/volumefade/privacy_policy.md
+https://elmansafarov1960.github.io
 
 ---
 
@@ -52,3 +62,5 @@ https://elmansafarov1960.github.io/volumefade/privacy_policy.md
 
 This project is provided as-is.  
 All rights reserved by the author.
+
+
